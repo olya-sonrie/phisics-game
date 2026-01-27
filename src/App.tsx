@@ -1,6 +1,7 @@
 import { onValue, ref, set, update } from 'firebase/database'
 import { useEffect, useState } from 'react'
 import './App.css'
+import gameMap from './assets/game.jpeg'
 import coordinatesData from './data/coordinates.json'
 import { db } from './firebase'
 
@@ -558,7 +559,7 @@ export default function App() {
             }
           }}
         >
-          <img src="/game.jpeg" alt="Map" className="map-img" />
+          <img src={gameMap} alt="Map" className="map-img" />
           {TEAMS_ORDER.map((t, idx) => {
             const p = gameState.players[t]
             if (!p.isActive || !coords[p.pos]) return null
@@ -567,8 +568,9 @@ export default function App() {
                 key={t}
                 className="player-token"
                 style={{
-                  left: `calc(${coords[p.pos].x}% + ${idx * 5}px)`,
-                  top: `calc(${coords[p.pos].y}% + ${idx * 5}px)`,
+                  left: `${coords[p.pos].x}%`,
+                  top: `${coords[p.pos].y}%`,
+                  transform: `translate(-50%, -50%) translate(${idx * 3}px, 0px)`,
                   backgroundColor: getTeamColor(t),
                 }}
               >

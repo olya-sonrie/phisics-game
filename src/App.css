@@ -192,10 +192,10 @@
 
 .player-token {
   position: absolute;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  border: 3px solid white;
+  border: 2px solid white;
   display: flex;
   align-items: center;
   justify-content: center;
