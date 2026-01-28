@@ -25,6 +25,7 @@ interface GameState {
   logs: string[]
   winner: string | null
   lastDice: number | null
+  gameStarted: boolean
 }
 
 interface Coord {
@@ -55,15 +56,27 @@ const QUESTIONS: Record<number, string> = {
 }
 
 const SPECIAL_NODES: Record<number, SpecialNode> = {
-  4: { type: 'green', target: 14 },
-  15: { type: 'red' },
-  21: { type: 'green', target: 25 },
-  31: { type: 'blue', target: 28 },
+  4: { type: 'green', target: 6 },
+  8: { type: 'red' },
+  10: { type: 'green', target: 14 },
+  19: { type: 'blue', target: 12 },
+  21: { type: 'green', target: 26 },
+  30: { type: 'blue', target: 27 },
+  31: { type: 'green', target: 34 },
+  33: { type: 'red' },
   38: { type: 'blue', target: 35 },
+  46: { type: 'blue', target: 44 },
+  48: { type: 'blue', target: 45 },
+  51: { type: 'green', target: 75 },
+  56: { type: 'green', target: 74 },
+  62: { type: 'red' },
+  63: { type: 'blue', target: 59 },
   71: { type: 'red' },
   73: { type: 'red' },
   79: { type: 'red' },
   81: { type: 'red' },
+  83: { type: 'blue', target: 69 },
+  87: { type: 'blue', target: 65 },
 }
 
 const INITIAL_STATE: GameState = {
@@ -77,6 +90,7 @@ const INITIAL_STATE: GameState = {
   logs: ['Гру створено'],
   winner: null,
   lastDice: null,
+  gameStarted: false,
 }
 
 // --- КОМПОНЕНТ ---
@@ -103,6 +117,7 @@ export default function App() {
   // --- АДМІН (LOGIN PAGE) ---
   const [showAdminLogin, setShowAdminLogin] = useState(false)
   const [adminPassInput, setAdminPassInput] = useState('')
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false)
 
   // Dev
   const [devMode, setDevMode] = useState(false)
@@ -112,7 +127,7 @@ export default function App() {
   useEffect(() => {
     let storedId = localStorage.getItem('phys_game_uid')
     if (!storedId) {
-      storedId = 'user_' + Math.random().toString(36).substr(2, 9)
+      storedId = 'user_' + Math.random().toString(36).substring(2, 11)
       localStorage.setItem('phys_game_uid', storedId)
     }
     setMyId(storedId)
@@ -205,6 +220,12 @@ export default function App() {
     }
   }
 
+  const handleAdminLogin = () => {
+    if (adminPassInput !== 'admin123') return alert('Невірний пароль!')
+    setIsAdminLoggedIn(true)
+    alert('Вхід в режим адміністратора успішний!')
+  }
+
   const leaveSessionOnly = () => {
     localStorage.removeItem('phys_game_session')
     setSessionId('')
@@ -230,14 +251,37 @@ export default function App() {
 
   // --- GAME LOGIC ---
 
+  const startGame = () => {
+    if (!gameState) return
+    
+    const activePlayers = TEAMS_ORDER.filter(team => gameState.players[team].isActive)
+    if (activePlayers.length < 4) {
+      alert('Для початку гри потрібно мінімум 4 команди!')
+      return
+    }
+
+    // Randomly determine who starts first
+    const randomStartIndex = Math.floor(Math.random() * activePlayers.length)
+    const startingTeam = activePlayers[randomStartIndex]
+    const startingIndex = TEAMS_ORDER.indexOf(startingTeam)
+    
+    update(ref(db, `games/${sessionId}`), { 
+      gameStarted: true,
+      currentTurnIndex: startingIndex,
+      logs: [`Гру розпочато! Першим ходить команда ${startingTeam}`, ...gameState.logs]
+    })
+  }
+
   const rollDice = () => {
     if (!gameState || !myTeam) return
+    if (!gameState.gameStarted) return alert('Гра ще не розпочата!')
+    
     const currentTeamName = TEAMS_ORDER[gameState.currentTurnIndex]
     if (gameState.players[currentTeamName].uid !== myId) return alert('Зараз не твій хід!')
 
     const player = gameState.players[myTeam]
     if (player.isSkipping) {
-      logMove(`Гравець ${player.name} пропускає хід.`)
+      logMove(`Гравець ${player.name} пропускає хід через червоне поле.`)
       updatePlayerState(myTeam, { isSkipping: false })
       passTurn()
       return
@@ -374,34 +418,90 @@ export default function App() {
             // АДМІН ВХІД
             <div style={{ animation: 'fadeIn 0.3s' }}>
               <h3 style={{ color: '#c0392b' }}>Режим Адміністратора</h3>
-              <p style={{ fontSize: '0.9em' }}>Введіть код кімнати, яку треба скинути</p>
+              
+              {!isAdminLoggedIn ? (
+                <>
+                  <p style={{ fontSize: '0.9em' }}>Введіть пароль для доступу до адмін функцій</p>
+                  
+                  <div style={{ textAlign: 'left', marginBottom: 15 }}>
+                    <label>Пароль адміна:</label>
+                    <input
+                      type="password"
+                      value={adminPassInput}
+                      onChange={e => setAdminPassInput(e.target.value)}
+                      className="big-input"
+                    />
+                  </div>
 
-              <div style={{ textAlign: 'left', marginBottom: 15 }}>
-                <label>Код кімнати:</label>
-                <input
-                  value={inputSessionId}
-                  onChange={e => setInputSessionId(e.target.value)}
-                  placeholder="TEST"
-                  className="big-input"
-                  style={{ textTransform: 'uppercase' }}
-                />
-              </div>
+                  <button className="enter-btn" style={{ background: '#2ecc71' }} onClick={handleAdminLogin}>
+                    🔓 УВІЙТИ ЯК АДМІН
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: '0.9em', color: '#2ecc71' }}>✓ Ви увійшли як адміністратор</p>
+                  
+                  <div style={{ textAlign: 'left', marginBottom: 15 }}>
+                    <label>Код кімнати для скидання:</label>
+                    <input
+                      value={inputSessionId}
+                      onChange={e => setInputSessionId(e.target.value)}
+                      placeholder="TEST"
+                      className="big-input"
+                      style={{ textTransform: 'uppercase' }}
+                    />
+                  </div>
 
-              <div style={{ textAlign: 'left', marginBottom: 15 }}>
-                <label>Пароль адміна:</label>
-                <input
-                  type="password"
-                  value={adminPassInput}
-                  onChange={e => setAdminPassInput(e.target.value)}
-                  className="big-input"
-                />
-              </div>
+                  <button className="enter-btn" style={{ background: '#c0392b' }} onClick={handleAdminReset}>
+                    ⚠️ СКИНУТИ ГРУ
+                  </button>
 
-              <button className="enter-btn" style={{ background: '#c0392b' }} onClick={handleAdminReset}>
-                ⚠️ СКИНУТИ ГРУ
-              </button>
+                  <div style={{ marginTop: 20, padding: 15, border: '1px solid #3498db', borderRadius: 5 }}>
+                    <h4 style={{ color: '#3498db', marginTop: 0 }}>Режим редагування карти</h4>
+                    <label className="dev-toggle">
+                      <input 
+                        type="checkbox" 
+                        checked={devMode}
+                        onChange={e => setDevMode(e.target.checked)} 
+                      /> 
+                      Увімкнути режим редагування
+                    </label>
+                    {devMode && (
+                      <div style={{ marginTop: 10 }}>
+                        <p style={{ fontSize: '0.8em', color: '#7f8c8d' }}>
+                          Режим редагування активний. Тепер ви можете клікати по карті для додавання координат.
+                        </p>
+                        <button
+                          onClick={() => {
+                            console.log(JSON.stringify(coords, null, 2))
+                            alert('Координати в консолі (F12)')
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            marginTop: 5, 
+                            padding: 5, 
+                            fontSize: '0.8em', 
+                            cursor: 'pointer',
+                            background: '#3498db',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: 3
+                          }}
+                        >
+                          💾 Експорт координат JSON
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
-              <button className="text-link" style={{ marginTop: 15 }} onClick={() => setShowAdminLogin(false)}>
+              <button className="text-link" style={{ marginTop: 15 }} onClick={() => {
+                setShowAdminLogin(false)
+                setIsAdminLoggedIn(false)
+                setAdminPassInput('')
+                setDevMode(false)
+              }}>
                 Назад до входу
               </button>
             </div>
@@ -414,8 +514,11 @@ export default function App() {
   if (loadingError) return <div className="center-screen error">{loadingError}</div>
   if (!gameState) return <div className="center-screen">Завантаження світу...</div>
 
-  // 2. LOBBY
-  if (!myTeam) {
+  // 2. LOBBY - Show lobby if no team selected OR game hasn't started yet
+  if (!myTeam || !gameState.gameStarted) {
+    const activePlayers = TEAMS_ORDER.filter(team => gameState.players[team].isActive)
+    const canStartGame = activePlayers.length === 4 && !gameState.gameStarted
+    
     return (
       <div className="lobby">
         <div className="lobby-header">
@@ -429,23 +532,54 @@ export default function App() {
             </button>
           </div>
         </div>
-        <h2>Обери команду:</h2>
+        
+        {gameState.gameStarted ? (
+          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+            <h2 style={{ color: '#2ecc71' }}>Гра розпочата!</h2>
+            <p>Переходимо до гри...</p>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+            <h2>Очікування гравців ({activePlayers.length}/4)</h2>
+            {canStartGame && (
+              <button 
+                onClick={startGame} 
+                className="enter-btn"
+                style={{ marginTop: '10px' }}
+              >
+                🎮 РОЗПОЧАТИ ГРУ
+              </button>
+            )}
+            {activePlayers.length < 4 && (
+              <p style={{ color: '#e74c3c', fontSize: '0.9em' }}>
+                Потрібно мінімум 4 команди для початку гри
+              </p>
+            )}
+          </div>
+        )}
+        <h3>Команди:</h3>
         <div className="team-list">
           {TEAMS_ORDER.map(team => {
             const p = gameState.players[team]
             const isTaken = p.isActive && p.uid !== myId
             const isMe = p.uid === myId
+            const isMyTeam = myTeam === team
             return (
               <button
                 key={team}
-                disabled={isTaken}
-                onClick={() => joinGame(team)}
-                className={`team-btn ${isTaken ? 'taken' : 'free'} ${isMe ? 'rejoin' : ''}`}
-                style={{ borderColor: getTeamColor(team) }}
+                disabled={isTaken && !isMe}
+                onClick={() => !isMyTeam && joinGame(team)}
+                className={`team-btn ${isTaken ? 'taken' : 'free'} ${isMe ? 'rejoin' : ''} ${isMyTeam ? 'selected' : ''}`}
+                style={{ 
+                  borderColor: getTeamColor(team),
+                  backgroundColor: isMyTeam ? getTeamColor(team) + '20' : undefined
+                }}
               >
                 <b>{team}</b>
                 <br />
-                {isTaken ? (isMe ? '(ПОВЕРНУТИСЬ)' : `(Грає: ${p.name})`) : '(Вільно)'}
+                {isTaken ? (
+                  isMe ? (isMyTeam ? '✓ ОБРАНО' : '(ПОВЕРНУТИСЬ)') : `(Грає: ${p.name})`
+                ) : gameState.gameStarted ? '(Гра розпочата)' : '(Вільно)'}
               </button>
             )
           })}
@@ -473,7 +607,7 @@ export default function App() {
         </div>
 
         <div className="players-list">
-          <h3>Команди:</h3>
+          <h3 className="players-title">Команди:</h3>
           {TEAMS_ORDER.map(t => {
             const p = gameState.players[t]
             if (!p.isActive) return null
@@ -499,18 +633,39 @@ export default function App() {
             <div className="winner-box">
               🏆 Перемога: <br /> {gameState.players[gameState.winner as TeamName].name}!
             </div>
+          ) : !gameState.gameStarted ? (
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <p style={{ color: '#f39c12', marginBottom: '10px' }}>
+                Очікування початку гри...
+              </p>
+              <p style={{ fontSize: '0.9em', color: '#7f8c8d' }}>
+                Гра розпочнеться, коли всі 4 команди будуть готові
+              </p>
+            </div>
           ) : (
             <>
               <div className="dice-display">🎲 {gameState.lastDice || '-'}</div>
               <div className="turn-info">
                 {isMyTurn ? (
-                  <span style={{ color: '#2ecc71' }}>ТВІЙ ХІД!</span>
+                  gameState.players[myTeam].isSkipping ? (
+                    <span style={{ color: '#e74c3c' }}>ПРОПУСК ХОДУ (червоне поле)</span>
+                  ) : (
+                    <span style={{ color: '#2ecc71' }}>ТВІЙ ХІД!</span>
+                  )
                 ) : (
-                  `Хід: ${gameState.players[currentTeamName].name}`
+                  gameState.players[currentTeamName].isSkipping ? (
+                    `${gameState.players[currentTeamName].name} пропускає хід`
+                  ) : (
+                    `Хід: ${gameState.players[currentTeamName].name}`
+                  )
                 )}
               </div>
-              <button className="roll-btn" disabled={!isMyTurn || !!modalData} onClick={rollDice}>
-                КИНУТИ КУБИК
+              <button 
+                className={`roll-btn ${isMyTurn && gameState.players[myTeam].isSkipping ? 'skip-turn' : ''}`} 
+                disabled={!isMyTurn || !!modalData} 
+                onClick={rollDice}
+              >
+                {isMyTurn && gameState.players[myTeam].isSkipping ? 'ПРОПУСТИТИ ХІД' : 'КИНУТИ КУБИК'}
               </button>
             </>
           )}
@@ -524,30 +679,48 @@ export default function App() {
           ))}
         </div>
 
-        {/* MAP EDIT TOGGLE */}
-        <div style={{ marginTop: 'auto' }}>
-          <label className="dev-toggle">
-            <input type="checkbox" onChange={e => setDevMode(e.target.checked)} /> Режим редагування
-          </label>
-          {devMode && (
-            <button
-              onClick={() => {
-                console.log(JSON.stringify(coords, null, 2))
-                alert('Координати в консолі (F12)')
-              }}
-              style={{ width: '100%', marginTop: 5, padding: 5, fontSize: '0.8em', cursor: 'pointer' }}
-            >
-              💾 Експорт JSON
-            </button>
-          )}
-        </div>
+        {/* Admin controls in game - only show if admin is logged in */}
+        {isAdminLoggedIn && (
+          <div style={{ marginTop: 'auto', padding: '10px', border: '1px solid #3498db', borderRadius: 5 }}>
+            <h4 style={{ color: '#3498db', marginTop: 0, fontSize: '0.9em' }}>Адмін: Режим редагування</h4>
+            <label className="dev-toggle">
+              <input 
+                type="checkbox" 
+                checked={devMode}
+                onChange={e => setDevMode(e.target.checked)} 
+              /> 
+              Режим редагування карти
+            </label>
+            {devMode && (
+              <button
+                onClick={() => {
+                  console.log(JSON.stringify(coords, null, 2))
+                  alert('Координати в консолі (F12)')
+                }}
+                style={{ 
+                  width: '100%', 
+                  marginTop: 5, 
+                  padding: 5, 
+                  fontSize: '0.8em', 
+                  cursor: 'pointer',
+                  background: '#3498db',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 3
+                }}
+              >
+                💾 Експорт JSON
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="map-area">
         <div
           className="map-wrapper"
           onClick={e => {
-            if (!devMode) return
+            if (!devMode || !isAdminLoggedIn) return
             const rect = e.currentTarget.getBoundingClientRect()
             const x = ((e.clientX - rect.left) / rect.width) * 100
             const y = ((e.clientY - rect.top) / rect.height) * 100
@@ -578,7 +751,7 @@ export default function App() {
               </div>
             )
           })}
-          {devMode &&
+          {devMode && isAdminLoggedIn &&
             Object.entries(coords).map(([num, pos]) => (
               <div key={num} className="debug-dot" style={{ left: `${pos.x}%`, top: `${pos.y}%` }}>
                 {num}
